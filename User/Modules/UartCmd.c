@@ -2,6 +2,7 @@
 #include "UartCmd.h"
 #include "UART.h"
 #include "ComCmd.h"
+#include "GpioCmd.h"
 
 /*
  * PRIVATE DEFINITIONS
@@ -34,6 +35,16 @@ const CmdNode_t * UARTCMD_InitMenu(void)
 	return &gUartMenu;
 }
 
+void UARTCMD_CrossDeinit(CmdLine_t * line)
+{
+	if (gUartEnabled)
+	{
+		Cmd_Prints(line, CmdReply_Warn, "uart deinitialised\r\n");
+		gUartEnabled = false;
+		UART_Deinit(BUS_UART);
+	}
+}
+
 /*
  * PRIVATE FUNCTIONS
  */
@@ -52,6 +63,8 @@ static const CmdArg_t gUartInitArgs[] = {
 static void UARTCMD_Init(CmdLine_t * line, CmdArgValue_t * argv)
 {
 	uint32_t baudrate = argv[0].number;
+
+	GPIOCMD_CrossDeinit(line);
 
 	if (gUartEnabled)
 	{

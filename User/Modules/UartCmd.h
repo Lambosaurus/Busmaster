@@ -17,5 +17,6 @@
  */
 
 const CmdNode_t * UARTCMD_InitMenu(void);
+void UARTCMD_CrossDeinit(CmdLine_t * line);
 
 #endif //UARTCMD_H

@@ -11,9 +11,10 @@
 #include "Modules\VersionCmd.h"
 #include "Modules\ConfigCmd.h"
 #include "Modules\AuxCmds.h"
+#include "Modules\GpioCmd.h"
 
 
-static const CmdNode_t * gRootItems[8];
+static const CmdNode_t * gRootItems[9];
 
 static const CmdNode_t gRootMenu = {
 	.type = CmdNode_Menu,
@@ -52,8 +53,9 @@ int main(void)
 	gRootItems[3] = I2CCMD_InitMenu();
 	gRootItems[4] = SPICMD_InitMenu();
 	gRootItems[5] = UARTCMD_InitMenu();
-	gRootItems[6] = AUXCMD_InitVref();
-	gRootItems[7] = AUXCMD_InitTemp();
+	gRootItems[6] = GPIOCMD_InitMenu();
+	gRootItems[7] = AUXCMD_InitVref();
+	gRootItems[8] = AUXCMD_InitTemp();
 
 	CmdLine_t line;
 	Cmd_Init(&line, &gRootMenu, USB_Write, (void*)gMemory, sizeof(gMemory));
