@@ -13,7 +13,7 @@
 #include "Modules\AuxCmds.h"
 
 
-static const CmdNode_t * gRootItems[8];
+static const CmdNode_t * gRootItems[9];
 
 static const CmdNode_t gRootMenu = {
 	.type = CmdNode_Menu,
@@ -54,6 +54,7 @@ int main(void)
 	gRootItems[5] = UARTCMD_InitMenu();
 	gRootItems[6] = AUXCMD_InitVref();
 	gRootItems[7] = AUXCMD_InitTemp();
+	gRootItems[8] = AUXCMD_InitHelp();
 
 	CmdLine_t line;
 	Cmd_Init(&line, &gRootMenu, USB_Write, (void*)gMemory, sizeof(gMemory));
