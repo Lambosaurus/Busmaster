@@ -45,6 +45,8 @@ static void VERSIONCMD_PrintVersion(CmdLine_t * line, CmdArgValue_t * args)
 static const CmdNode_t gVersionNode = {
 	.type = CmdNode_Function,
 	.name = "version",
+	.help = "This prints out the version of the busmaster build. "
+			"Check https://github.com/Lambosaurus/Busmaster for a more up to date release.",
 	.func = {
 		.arglen = 0,
 		.callback = VERSIONCMD_PrintVersion

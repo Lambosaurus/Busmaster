@@ -78,14 +78,14 @@ static const CmdArg_t gI2cInitArgs[] = {
 	},
 	{
 		.name = "pullup",
-		.type = CmdArg_Number,
+		.type = CmdArg_Number | CmdArg_Optional,
 	}
 };
 
 static void I2CCMD_Init(CmdLine_t * line, CmdArgValue_t * argv)
 {
 	uint32_t speed = argv[0].number;
-	uint32_t pullup = argv[1].number;
+	uint32_t pullup = argv[1].present ? argv[1].number : 0;
 	I2CCMD_SetPullups(pullup);
 
 	if (gI2cEnabled)
@@ -106,6 +106,7 @@ static void I2CCMD_Init(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gI2cInitNode = {
 	.type = CmdNode_Function,
 	.name = "init",
+	.help = "Intialises the I2C bus. I2C pullups are configured in ohms - omit this for external pullups.",
 	.func = {
 		.args = gI2cInitArgs,
 		.arglen = LENGTH(gI2cInitArgs),
@@ -128,6 +129,7 @@ static void I2CCMD_Deinit(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gI2cDeinitNode = {
 	.type = CmdNode_Function,
 	.name = "deinit",
+	.help = "Deinitialises the I2C bus and pullups.",
 	.func = {
 		.arglen = 0,
 		.callback = I2CCMD_Deinit,
@@ -157,6 +159,7 @@ static void I2CCMD_Scan(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gI2cScanNode = {
 	.type = CmdNode_Function,
 	.name = "scan",
+	.help = "Performs a zero length write on all valid I2C addresses to search for devices.",
 	.func = {
 		.arglen = 0,
 		.callback = I2CCMD_Scan,
@@ -203,6 +206,7 @@ static void I2CCMD_Write(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gI2cWriteNode = {
 	.type = CmdNode_Function,
 	.name = "write",
+	.help = "Writes the specified bytes to the device.",
 	.func = {
 		.args = gI2cWriteArgs,
 		.arglen = LENGTH(gI2cWriteArgs),
@@ -257,6 +261,7 @@ static void I2CCMD_Read(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gI2cReadNode = {
 	.type = CmdNode_Function,
 	.name = "read",
+	.help = "Reads the specified number of bytes from the device.",
 	.func = {
 		.args = gI2cReadArgs,
 		.arglen = LENGTH(gI2cReadArgs),
@@ -317,6 +322,7 @@ static void I2CCMD_Transfer(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gI2cTransferNode = {
 	.type = CmdNode_Function,
 	.name = "transfer",
+	.help = "Writes the specified bytes to the device, performs a repeated start condition, then does a read.",
 	.func = {
 		.args = gI2cTransferArgs,
 		.arglen = LENGTH(gI2cTransferArgs),
@@ -336,6 +342,7 @@ static const CmdNode_t * gI2cFunctions[] = {
 static const CmdNode_t gI2cMenu = {
 	.type = CmdNode_Menu,
 	.name = "i2c",
+	.help = "Provides functions for the I2C interface, and configurable pullups.",
 	.menu = {
 		.count = LENGTH(gI2cFunctions),
 		.nodes = gI2cFunctions

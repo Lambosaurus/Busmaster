@@ -10,6 +10,9 @@
 #define LENGTH(x)		(sizeof(x) / sizeof(*x))
 #define CMD_MAX_ARGS	8
 
+#define CMD_HELP_SYMBOL		"?"
+#define CMD_HELP_NODE		"help"
+
 /*
  * PUBLIC TYPES
  */
@@ -59,6 +62,7 @@ typedef struct {
 typedef struct CmdNode_s {
 	const char * name;
 	uint8_t type;
+	const char * help;
 	union {
 		struct {
 			const CmdNode_t ** nodes;
@@ -104,5 +108,9 @@ void Cmd_Printf(CmdLine_t * line, CmdReplyLevel_t level, const char * fmt, ...);
 void Cmd_Prints(CmdLine_t * line, CmdReplyLevel_t level, const char * str);
 void * Cmd_Malloc(CmdLine_t * line, uint32_t size);
 void Cmd_Free(CmdLine_t * line, void * ptr);
+
+#ifdef COMMAND_ENABLE_HELP
+const CmdNode_t * Cmd_InitHelpNode(void);
+#endif
 
 #endif //COMMAND_H

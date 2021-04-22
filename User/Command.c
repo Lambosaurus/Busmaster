@@ -37,7 +37,7 @@ static void Cmd_FreeAll(CmdLine_t * line);
 static CmdTokenStatus_t Cmd_ParseToken(const char ** str, CmdToken_t * token);
 static CmdTokenStatus_t Cmd_NextToken(CmdLine_t * line, const char ** str, CmdToken_t * token);
 static bool Cmd_ParseArg(CmdLine_t * line, const CmdArg_t * arg, CmdArgValue_t * value, CmdToken_t * token);
-static const char * Cmd_ArgTypeStr(CmdLine_t * line, const CmdArg_t * arg);
+static const char * Cmd_ArgTypeStr(CmdLine_t * line, CmdArgType_t type);
 
 static void Cmd_RunRoot(CmdLine_t * line, const char * str);
 static void Cmd_PrintMenuHelp(CmdLine_t * line, const CmdNode_t * node);
@@ -415,8 +415,19 @@ static bool Cmd_ParseArg(CmdLine_t * line, const CmdArg_t * arg, CmdArgValue_t *
 	}
 }
 
-static const char * Cmd_ArgTypeStr_Internal(uint8_t type)
+static const char * Cmd_ArgTypeStr(CmdLine_t * line, CmdArgType_t type)
 {
+	if (type & CmdArg_Optional)
+	{
+		const char * str = Cmd_ArgTypeStr(line, type & CmdArg_Mask);
+		uint32_t size = strlen(str);
+		char * bfr = Cmd_Malloc(line, size + 2);
+		memcpy(bfr, str, size);
+		bfr[size] = '?';
+		bfr[size + 1] = 0;
+		return bfr;
+	}
+
 	switch (type)
 	{
 	case CmdArg_Bool:
@@ -432,21 +443,6 @@ static const char * Cmd_ArgTypeStr_Internal(uint8_t type)
 	}
 }
 
-static const char * Cmd_ArgTypeStr(CmdLine_t * line, const CmdArg_t * arg)
-{
-	if (arg->type & CmdArg_Optional)
-	{
-		const char * str = Cmd_ArgTypeStr_Internal(arg->type & CmdArg_Mask);
-		uint32_t size = strlen(str);
-		char * bfr = Cmd_Malloc(line, size + 2);
-		memcpy(bfr, str, size);
-		bfr[size] = '?';
-		bfr[size + 1] = 0;
-		return bfr;
-	}
-	return Cmd_ArgTypeStr_Internal(arg->type);
-}
-
 static void Cmd_PrintMenuHelp(CmdLine_t * line, const CmdNode_t * node)
 {
 	Cmd_Printf(line, CmdReply_Info, "<menu: %s> contains %d nodes:\r\n", node->name, node->menu.count);
@@ -455,15 +451,29 @@ static void Cmd_PrintMenuHelp(CmdLine_t * line, const CmdNode_t * node)
 		const CmdNode_t * child = node->menu.nodes[i];
 		Cmd_Printf(line, CmdReply_Info, " - %s\r\n", child->name);
 	}
+
+	if (node->help)
+	{
+		Cmd_Prints(line, CmdReply_Info, "Info: ");
+		Cmd_Prints(line, CmdReply_Info, node->help);
+		Cmd_Prints(line, CmdReply_Info, "\r\n");
+	}
 }
 
 static void Cmd_PrintFunctionHelp(CmdLine_t * line, const CmdNode_t * node)
 {
-	Cmd_Printf(line, CmdReply_Info, "<func: %s> takes %d arguments:\r\n", node->name, node->func.arglen);
+	Cmd_Printf(line, CmdReply_Info, "<func: %s> takes %d arguments%c\r\n", node->name, node->func.arglen, node->func.arglen ? ':' : '.');
 	for (uint32_t argn = 0; argn < node->func.arglen; argn++)
 	{
 		const CmdArg_t * arg = &node->func.args[argn];
-		Cmd_Printf(line, CmdReply_Info, " - <%s: %s>\r\n", Cmd_ArgTypeStr(line, arg), arg->name);
+		Cmd_Printf(line, CmdReply_Info, " - <%s: %s>\r\n", Cmd_ArgTypeStr(line, arg->type), arg->name);
+	}
+
+	if (node->help)
+	{
+		Cmd_Prints(line, CmdReply_Info, "Info: ");
+		Cmd_Prints(line, CmdReply_Info, node->help);
+		Cmd_Prints(line, CmdReply_Info, "\r\n");
 	}
 }
 
@@ -482,7 +492,7 @@ static void Cmd_RunMenu(CmdLine_t * line, const CmdNode_t * node, const char * s
 		break; // Continue execution.
 	}
 
-	if (strcmp("?", token.str) == 0)
+	if (strcmp(CMD_HELP_SYMBOL, token.str) == 0)
 	{
 		Cmd_PrintMenuHelp(line, node);
 	}
@@ -519,7 +529,7 @@ static void Cmd_RunFunction(CmdLine_t * line, const CmdNode_t * node, const char
 	CmdToken_t token;
 	CmdTokenStatus_t tstat = Cmd_NextToken(line, &str, &token);
 
-	if (tstat == CmdToken_Ok && strcmp("?", token.str) == 0)
+	if (tstat == CmdToken_Ok && strcmp(CMD_HELP_SYMBOL, token.str) == 0)
 	{
 		Cmd_PrintFunctionHelp(line, node);
 		return;
@@ -555,7 +565,10 @@ static void Cmd_RunFunction(CmdLine_t * line, const CmdNode_t * node, const char
 		}
 
 		// Parse failed or blank token found.
-		Cmd_Printf(line, CmdReply_Error, "Argument %d is <%s: %s>\r\n", argn+1, Cmd_ArgTypeStr(line, arg), arg->name);
+		Cmd_Printf(line, CmdReply_Error, "Argument %d is <%s: %s>\r\n", argn+1, Cmd_ArgTypeStr(line, arg->type), arg->name);
+#ifdef CMD_HELP_NODE
+		Cmd_Printf(line, CmdReply_Error, "Enter '" CMD_HELP_NODE " %s' for more info\r\n", Cmd_ArgTypeStr(line, arg->type & CmdArg_Mask));
+#endif
 		return;
 	}
 	for (; argn < node->func.arglen; argn++)

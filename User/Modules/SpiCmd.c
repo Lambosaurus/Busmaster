@@ -122,6 +122,7 @@ static void SPICMD_Init(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gSpiInitNode = {
 	.type = CmdNode_Function,
 	.name = "init",
+	.help = "This initialises the SPI module.",
 	.func = {
 		.args = gSpiInitArgs,
 		.arglen = LENGTH(gSpiInitArgs),
@@ -177,6 +178,7 @@ static void SPICMD_Select(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gSpiSelectNode = {
 	.type = CmdNode_Function,
 	.name = "select",
+	.help = "Asserts or de-assets the CS pin. This will overrride auto select if enabled.",
 	.func = {
 		.arglen = LENGTH(gSpiSelectArgs),
 		.args = gSpiSelectArgs,
@@ -199,6 +201,7 @@ static void SPICMD_AutoSelect(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gSpiAutoselectNode = {
 	.type = CmdNode_Function,
 	.name = "autoselect",
+	.help = "When enabled, autoselect will automatically assert CS during a SPI transaction.",
 	.func = {
 		.arglen = 0,
 		.callback = SPICMD_AutoSelect,
@@ -232,6 +235,7 @@ static void SPICMD_Write(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gSpiWriteNode = {
 	.type = CmdNode_Function,
 	.name = "write",
+	.help = "Writes bytes to the SPI bus.",
 	.func = {
 		.args = gSpiWriteArgs,
 		.arglen = LENGTH(gSpiWriteArgs),
@@ -272,6 +276,7 @@ static void SPICMD_Read(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gSpiReadNode = {
 	.type = CmdNode_Function,
 	.name = "read",
+	.help = "Reads bytes from the SPI bus. 0xFF's will be used as the dummy transmit.",
 	.func = {
 		.args = gSpiReadArgs,
 		.arglen = LENGTH(gSpiReadArgs),
@@ -307,6 +312,7 @@ static void SPICMD_Transfer(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gSpiTransferNode = {
 	.type = CmdNode_Function,
 	.name = "transfer",
+	.help = "This writes the specified payload, and returns the bytes read.",
 	.func = {
 		.args = gSpiTransferArgs,
 		.arglen = LENGTH(gSpiTransferArgs),
@@ -327,6 +333,7 @@ static const CmdNode_t * gSpiFunctions[] = {
 static const CmdNode_t gSpiMenu = {
 	.type = CmdNode_Menu,
 	.name = "spi",
+	.help = "Provides functions for interfacing with the SPI bus.",
 	.menu = {
 		.nodes = gSpiFunctions,
 		.count = LENGTH(gSpiFunctions)

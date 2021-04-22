@@ -66,6 +66,7 @@ static void UARTCMD_Init(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gUartInitNode = {
 	.type = CmdNode_Function,
 	.name = "init",
+	.help = "This initialises the uart output. Note that this module is shared with the gpio module and has a pinout matching a standard ftdi cable.",
 	.func = {
 		.args = gUartInitArgs,
 		.arglen = LENGTH(gUartInitArgs),
@@ -86,6 +87,7 @@ static void UARTCMD_Deinit(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gUartDeinitNode = {
 	.type = CmdNode_Function,
 	.name = "deinit",
+	.help = "This deinitialises the uart output.",
 	.func = {
 		.arglen = 0,
 		.callback = UARTCMD_Deinit,
@@ -115,6 +117,7 @@ static void UARTCMD_Write(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gUartWriteNode = {
 	.type = CmdNode_Function,
 	.name = "write",
+	.help = "This writes the specified bytes to the uart.",
 	.func = {
 		.args = gUartWriteArgs,
 		.arglen = LENGTH(gUartWriteArgs),
@@ -125,7 +128,7 @@ static const CmdNode_t gUartWriteNode = {
 static const CmdArg_t gUartReadArgs[] = {
 	{
 		.name = "count",
-		.type = CmdArg_Number,
+		.type = CmdArg_Number | CmdArg_Optional,
 	}
 };
 
@@ -137,7 +140,7 @@ static void UARTCMD_Read(CmdLine_t * line, CmdArgValue_t * argv)
 		return;
 	}
 
-	uint32_t count = argv[0].number;
+	uint32_t count = argv[0].present ? argv[0].number : UART_RX_MAX;
 	if (count > UART_RX_MAX)
 	{
 		count = UART_RX_MAX;
@@ -151,6 +154,7 @@ static void UARTCMD_Read(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gUartReadNode = {
 	.type = CmdNode_Function,
 	.name = "read",
+	.help = "This reads any available data from the uart recieve buffer.",
 	.func = {
 		.args = gUartReadArgs,
 		.arglen = LENGTH(gUartReadArgs),
@@ -173,6 +177,7 @@ static void UARTCMD_Ready(CmdLine_t * line, CmdArgValue_t * argv)
 static const CmdNode_t gUartReadyNode = {
 	.type = CmdNode_Function,
 	.name = "ready",
+	.help = "Returns the number of bytes in the uart receive buffer.",
 	.func = {
 		.arglen = 0,
 		.callback = UARTCMD_Ready,

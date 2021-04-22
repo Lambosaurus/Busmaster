@@ -19,6 +19,5 @@
 const CmdNode_t * AUXCMD_InitTemp(void);
 const CmdNode_t * AUXCMD_InitVref(void);
 const CmdNode_t * AUXCMD_InitVout(void);
-const CmdNode_t * AUXCMD_InitHelp(void);
 
 #endif //VOUTCMD_H

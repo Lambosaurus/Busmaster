@@ -11,6 +11,7 @@
 #include "Modules\VersionCmd.h"
 #include "Modules\ConfigCmd.h"
 #include "Modules\AuxCmds.h"
+#include "Modules\HelpCmd.h"
 
 
 static const CmdNode_t * gRootItems[9];
@@ -54,7 +55,7 @@ int main(void)
 	gRootItems[5] = UARTCMD_InitMenu();
 	gRootItems[6] = AUXCMD_InitVref();
 	gRootItems[7] = AUXCMD_InitTemp();
-	gRootItems[8] = AUXCMD_InitHelp();
+	gRootItems[8] = HelpCmd_InitMenu();
 
 	CmdLine_t line;
 	Cmd_Init(&line, &gRootMenu, USB_Write, (void*)gMemory, sizeof(gMemory));
