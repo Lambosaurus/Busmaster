@@ -11,6 +11,7 @@
  */
 
 #define CMD_MAX_LINE	256
+#define DEL				0x7F
 
 /*
  * PRIVATE TYPES
@@ -22,16 +23,22 @@ typedef struct {
 	uint32_t size;
 }CmdToken_t;
 
+typedef enum {
+	CmdToken_Ok,
+	CmdToken_Empty,
+	CmdToken_Broken,
+} CmdTokenStatus_t;
+
 /*
  * PRIVATE PROTOTYPES
  */
 
 static void Cmd_FreeAll(CmdLine_t * line);
 
-static bool Cmd_ParseToken(const char ** str, CmdToken_t * token);
-static bool Cmd_NextToken(CmdLine_t * line, const char ** str, CmdToken_t * token);
+static CmdTokenStatus_t Cmd_ParseToken(const char ** str, CmdToken_t * token);
+static CmdTokenStatus_t Cmd_NextToken(CmdLine_t * line, const char ** str, CmdToken_t * token);
 static bool Cmd_ParseArg(CmdLine_t * line, const CmdArg_t * arg, CmdArgValue_t * value, CmdToken_t * token);
-static const char * Cmd_ArgTypeStr(const CmdArg_t * arg);
+static const char * Cmd_ArgTypeStr(CmdLine_t * line, const CmdArg_t * arg);
 
 static void Cmd_RunRoot(CmdLine_t * line, const char * str);
 static void Cmd_PrintMenuHelp(CmdLine_t * line, const CmdNode_t * node);
@@ -57,6 +64,7 @@ void Cmd_Init(CmdLine_t * line, const CmdNode_t * root, void (*print)(const uint
 	line->bfr.index = 0;
 	line->bfr.data = memory;
 	line->bfr.size = CMD_MAX_LINE;
+	line->bfr.recall_index = 0;
 	line->root = root;
 	line->print = print;
 
@@ -66,6 +74,7 @@ void Cmd_Init(CmdLine_t * line, const CmdNode_t * root, void (*print)(const uint
 
 	memset(&line->cfg, 0, sizeof(line->cfg));
 	line->last_ch = 0;
+	line->ansi = CmdAnsi_None;
 }
 
 uint32_t Cmd_Memfree(CmdLine_t * line)
@@ -93,6 +102,82 @@ void Cmd_Free(CmdLine_t * line, void * ptr)
 	}
 }
 
+void Cmd_ClearLine(CmdLine_t * line)
+{
+	if (line->cfg.echo)
+	{
+		uint32_t size = line->bfr.index;
+		char * bfr = Cmd_Malloc(line, size);
+		memset(bfr, DEL, size);
+		line->print((uint8_t *)bfr, size);
+		Cmd_Free(line, bfr);
+	}
+	line->bfr.recall_index = line->bfr.index;
+	line->bfr.index = 0;
+
+}
+
+void Cmd_RecallLine(CmdLine_t * line)
+{
+	if (line->cfg.echo)
+	{
+		line->print( (uint8_t *)(line->bfr.data + line->bfr.index), line->bfr.recall_index - line->bfr.index);
+	}
+	line->bfr.index = line->bfr.recall_index;
+}
+
+void Cmd_HandleAnsi(CmdLine_t * line, char ch)
+{
+	switch (line->ansi)
+	{
+	case CmdAnsi_Escaped:
+		if (ch == '[')
+		{
+			line->ansi = CmdAnsi_CSI;
+		}
+		else
+		{
+			line->ansi = CmdAnsi_None;
+		}
+		break;
+	case CmdAnsi_CSI:
+		if (ch > 0x40)
+		{
+			switch (ch)
+			{
+			case 'A': // up
+				if (line->bfr.recall_index > line->bfr.index)
+				{
+					Cmd_RecallLine(line);
+				}
+				else
+				{
+					Cmd_Bell(line);
+				}
+				break;
+			case 'B': // down
+				if (line->bfr.index)
+				{
+					Cmd_ClearLine(line);
+				}
+				else
+				{
+					Cmd_Bell(line);
+				}
+				break;
+			case 'C': // fwd
+			case 'D': // back
+			default:
+				Cmd_Bell(line);
+				break;
+			}
+			line->ansi = CmdAnsi_None;
+		}
+	case CmdAnsi_None:
+		break;
+	}
+}
+
 void Cmd_Parse(CmdLine_t * line, const uint8_t * data, uint32_t count)
 {
 	const uint8_t * echo_data = data;
@@ -101,87 +186,110 @@ void Cmd_Parse(CmdLine_t * line, const uint8_t * data, uint32_t count)
 	while(count--)
 	{
 		char ch = *data++;
-		switch (ch)
+
+		if (line->ansi != CmdAnsi_None)
 		{
-		case '\n':
-			if (line->last_ch == '\r')
+			Cmd_HandleAnsi(line, ch);
+			// Do not echo ansi sequences
+			echo_count = count;
+			echo_data = data;
+		}
+		else
+		{
+			switch (ch)
 			{
-				// completion of a \r\n.
+			case '\n':
+				if (line->last_ch == '\r')
+				{
+					// completion of a \r\n.
+					break;
+				}
+				// fallthrough
+			case '\r':
+			case 0:
+				if (line->cfg.echo)
+				{
+					// Print everything up until now excluding the current char
+					line->print(echo_data, echo_count - count - 1);
+					echo_count = count;
+					echo_data = data;
+					// Now print a full eol.
+					line->print((uint8_t *)"\r\n", 2);
+				}
+
+				if (line->bfr.index)
+				{
+					// null terminate command and run it.
+					line->bfr.data[line->bfr.index] = 0;
+					Cmd_RunRoot(line, line->bfr.data);
+					line->bfr.index = 0;
+				}
+				break;
+			case '\t':
+				line->bfr.data[line->bfr.index] = 0;
+				const char * append = Cmd_TabComplete(line, line->bfr.data);
+				if (append != NULL)
+				{
+					uint32_t append_count = strlen(append);
+					uint32_t newindex = line->bfr.index + append_count;
+					if (newindex < line->bfr.size)
+					{
+						// A tab complete should not overflow the line buffer.
+						memcpy(line->bfr.data + line->bfr.index, append, append_count);
+						line->bfr.index += append_count;
+						line->bfr.recall_index = line->bfr.index;
+						line->print((uint8_t *)append, append_count);
+					}
+				}
+				else
+				{
+					Cmd_Bell(line);
+				}
+				if (line->cfg.echo)
+				{
+					// Print everything up until now excluding the current char
+					// This is needed to swallow the \t char.
+					line->print(echo_data, echo_count - count - 1);
+					echo_count = count;
+					echo_data = data;
+				}
+				break;
+			case DEL:
+				if (line->bfr.index)
+				{
+					line->bfr.index--;
+				}
+				else
+				{
+					Cmd_Bell(line);
+				}
+				break;
+			case '\e':
+				if (line->cfg.echo)
+				{
+					// Swallow this char.
+					line->print(echo_data, echo_count - count - 1);
+					echo_count = count;
+					echo_data = data;
+				}
+				line->ansi = CmdAnsi_Escaped;
+				break;
+			default:
+				if (line->bfr.index < line->bfr.size - 1)
+				{
+					// Need to leave room for at least a null char.
+					line->bfr.data[line->bfr.index++] = ch;
+				}
+				else
+				{
+					// Discard the line
+					line->bfr.index = 0;
+				}
+				line->bfr.recall_index = line->bfr.index;
 				break;
 			}
-			// fallthrough
-		case '\r':
-		case 0:
-			if (line->cfg.echo)
-			{
-				// Print everything up until now excluding the current char
-				line->print(echo_data, echo_count - count - 1);
-				echo_count = count;
-				echo_data = data;
-				// Now print a full eol.
-				line->print((uint8_t *)"\r\n", 2);
-			}
-
-			if (line->bfr.index)
-			{
-				// null terminate command and run it.
-				line->bfr.data[line->bfr.index] = 0;
-				Cmd_RunRoot(line, line->bfr.data);
-				line->bfr.index = 0;
-			}
-			break;
-		case '\t':
-			line->bfr.data[line->bfr.index] = 0;
-			const char * append = Cmd_TabComplete(line, line->bfr.data);
-			if (append != NULL)
-			{
-				uint32_t append_count = strlen(append);
-				uint32_t newindex = line->bfr.index + append_count;
-				if (newindex < line->bfr.size)
-				{
-					// A tab complete should not overflow the line buffer.
-					memcpy(line->bfr.data + line->bfr.index, append, append_count);
-					line->bfr.index += append_count;
-					line->print((uint8_t *)append, append_count);
-				}
-			}
-			else
-			{
-				Cmd_Bell(line);
-			}
-			if (line->cfg.echo)
-			{
-				// Print everything up until now excluding the current char
-				// This is needed to swallow the \t char.
-				line->print(echo_data, echo_count - count - 1);
-				echo_count = count;
-				echo_data = data;
-			}
-			break;
-		case 127: // DEL char
-			if (line->bfr.index)
-			{
-				line->bfr.index--;
-			}
-			else
-			{
-				Cmd_Bell(line);
-			}
-			break;
-		default:
-			if (line->bfr.index < line->bfr.size - 1)
-			{
-				// Need to leave room for at least a null char.
-				line->bfr.data[line->bfr.index++] = ch;
-			}
-			else
-			{
-				// Discard the line
-				line->bfr.index = 0;
-			}
-			break;
+			line->last_ch = ch;
 		}
-		line->last_ch = ch;
 	}
 
 	if (line->cfg.echo && echo_count)
@@ -264,7 +372,7 @@ static void Cmd_FreeAll(CmdLine_t * line)
 	line->mem.head = line->mem.heap;
 }
 
-static bool Cmd_ParseToken(const char ** str, CmdToken_t * token)
+static CmdTokenStatus_t Cmd_ParseToken(const char ** str, CmdToken_t * token)
 {
 	const char * head = *str;
 	while (1)
@@ -277,7 +385,7 @@ static bool Cmd_ParseToken(const char ** str, CmdToken_t * token)
 		}
 		else if (ch == 0)
 		{
-			return false;
+			return CmdToken_Empty;
 		}
 		else
 		{
@@ -303,7 +411,7 @@ static bool Cmd_ParseToken(const char ** str, CmdToken_t * token)
 
 			if (ch == 0)
 			{
-				return false;
+				return CmdToken_Broken;
 			}
 			else if (escaped)
 			{
@@ -320,6 +428,9 @@ static bool Cmd_ParseToken(const char ** str, CmdToken_t * token)
 			}
 			head++;
 		}
+
+		token->size = head - token->str;
+		head++;
 	}
 	else // Non quoted token
 	{
@@ -334,25 +445,27 @@ static bool Cmd_ParseToken(const char ** str, CmdToken_t * token)
 			}
 			head++;
 		}
+
+		token->size = head - token->str;
 	}
 
-	token->size = head - token->str;
 	*str = head;
-	return true;
+
+	return CmdToken_Ok;
 }
 
-static bool Cmd_NextToken(CmdLine_t * line, const char ** str, CmdToken_t * token)
+static CmdTokenStatus_t Cmd_NextToken(CmdLine_t * line, const char ** str, CmdToken_t * token)
 {
-	if (Cmd_ParseToken(str, token))
+	CmdTokenStatus_t status = Cmd_ParseToken(str, token);
+	if (status == CmdToken_Ok)
 	{
 		// Copy token from a ref to an allocated buffer
 		char * bfr = Cmd_Malloc(line, token->size + 1);
 		memcpy(bfr, token->str, token->size);
 		bfr[token->size] = 0;
 		token->str = bfr;
-		return true;
 	}
-	return false;
+	return status;
 }
 
 static void Cmd_RunRoot(CmdLine_t * line, const char * str)
@@ -371,7 +484,7 @@ static const char * Cmd_TabComplete(CmdLine_t * line, const char * str)
 static bool Cmd_ParseArg(CmdLine_t * line, const CmdArg_t * arg, CmdArgValue_t * value, CmdToken_t * token)
 {
 	const char * str = token->str;
-	switch (arg->type)
+	switch (arg->type & CmdArg_Mask)
 	{
 	case CmdArg_Bool:
 	{
@@ -409,9 +522,9 @@ static bool Cmd_ParseArg(CmdLine_t * line, const CmdArg_t * arg, CmdArgValue_t *
 	}
 }
 
-static const char * Cmd_ArgTypeStr(const CmdArg_t * arg)
+static const char * Cmd_ArgTypeStr_Internal(uint8_t type)
 {
-	switch (arg->type)
+	switch (type)
 	{
 	case CmdArg_Bool:
 		return "boolean";
@@ -424,6 +537,21 @@ static const char * Cmd_ArgTypeStr(const CmdArg_t * arg)
 	default:
 		return "UNKNOWN";
 	}
+}
+
+static const char * Cmd_ArgTypeStr(CmdLine_t * line, const CmdArg_t * arg)
+{
+	if (arg->type & CmdArg_Optional)
+	{
+		const char * str = Cmd_ArgTypeStr_Internal(arg->type & CmdArg_Mask);
+		uint32_t size = strlen(str);
+		char * bfr = Cmd_Malloc(line, size + 2);
+		memcpy(bfr, str, size);
+		bfr[size] = '?';
+		bfr[size + 1] = 0;
+		return bfr;
+	}
+	return Cmd_ArgTypeStr_Internal(arg->type);
 }
 
 static void Cmd_PrintMenuHelp(CmdLine_t * line, const CmdNode_t * node)
@@ -442,18 +570,26 @@ static void Cmd_PrintFunctionHelp(CmdLine_t * line, const CmdNode_t * node)
 	for (uint32_t argn = 0; argn < node->func.arglen; argn++)
 	{
 		const CmdArg_t * arg = &node->func.args[argn];
-		Cmd_Printf(line, CmdReply_Info, " - <%s: %s>\r\n", Cmd_ArgTypeStr(arg), arg->name);
+		Cmd_Printf(line, CmdReply_Info, " - <%s: %s>\r\n", Cmd_ArgTypeStr(line, arg), arg->name);
 	}
 }
 
 static void Cmd_RunMenu(CmdLine_t * line, const CmdNode_t * node, const char * str)
 {
 	CmdToken_t token;
-	if (!Cmd_NextToken(line, &str, &token))
+	switch(Cmd_NextToken(line, &str, &token))
 	{
+	case CmdToken_Empty:
 		Cmd_Printf(line, CmdReply_Info, "<menu: %s>\r\n", node->name);
+		return;
+	case CmdToken_Broken:
+		Cmd_Prints(line, CmdReply_Error, "Incomplete token found\r\n");
+		return;
+	case CmdToken_Ok:
+		break; // Continue execution.
 	}
-	else if (strcmp("?", token.str) == 0)
+
+	if (strcmp("?", token.str) == 0)
 	{
 		Cmd_PrintMenuHelp(line, node);
 	}
@@ -484,13 +620,13 @@ static void Cmd_RunMenu(CmdLine_t * line, const CmdNode_t * node, const char * s
 
 static void Cmd_RunFunction(CmdLine_t * line, const CmdNode_t * node, const char * str)
 {
-	CmdArgValue_t args[CMD_MAX_ARGS];
+	CmdArgValue_t args[CMD_MAX_ARGS + 1]; // We will parse an extra as a test.
 	uint32_t argn = 0;
 
 	CmdToken_t token;
-	bool token_ok = Cmd_NextToken(line, &str, &token);
+	CmdTokenStatus_t tstat = Cmd_NextToken(line, &str, &token);
 
-	if (token_ok && strcmp("?", token.str) == 0)
+	if (tstat == CmdToken_Ok && strcmp("?", token.str) == 0)
 	{
 		Cmd_PrintFunctionHelp(line, node);
 		return;
@@ -500,23 +636,44 @@ static void Cmd_RunFunction(CmdLine_t * line, const CmdNode_t * node, const char
 	{
 		const CmdArg_t * arg = &node->func.args[argn];
 
-		if (argn > 0)
+		if (tstat == CmdToken_Ok)
 		{
-			// We already parsed our first token.
-			token_ok = Cmd_NextToken(line, &str, &token);
+			if (Cmd_ParseArg(line, arg, args + argn, &token))
+			{
+				args[argn].present = true;
+				// Check if there is a following token
+				tstat = Cmd_NextToken(line, &str, &token);
+				continue;
+			}
 		}
-
-		if (!(token_ok && Cmd_ParseArg(line, arg, args + argn, &token)))
+		else if (tstat == CmdToken_Empty)
 		{
-			Cmd_Printf(line, CmdReply_Error, "Argument %d is <%s: %s>\r\n", argn+1, Cmd_ArgTypeStr(arg), arg->name);
+			if (arg->type & CmdArg_Optional)
+			{
+				// Stop scanning for args without an error.
+				// Assume all following arguments are also optional.
+				break;
+			}
+		}
+		else
+		{
+			Cmd_Prints(line, CmdReply_Error, "Incomplete token found\r\n");
 			return;
 		}
 
-		// Unfortunately we cannot free our tokens, as args will malloc on top of them.
+		// Parse failed or blank token found.
+		Cmd_Printf(line, CmdReply_Error, "Argument %d is <%s: %s>\r\n", argn+1, Cmd_ArgTypeStr(line, arg), arg->name);
+		return;
 	}
-	if (argn != node->func.arglen)
+	for (; argn < node->func.arglen; argn++)
 	{
-		Cmd_Printf(line, CmdReply_Error, "<func: %s> required %d arguments\r\n", node->name, node->func.arglen);
+		// Any remaining nodes are not present.
+		args[argn].present = false;
+	}
+
+	if (tstat != CmdToken_Empty)
+	{
+		Cmd_Printf(line, CmdReply_Error, "<func: %s> takes maximum %d arguments\r\n", node->name, node->func.arglen);
 	}
 	else
 	{
@@ -540,7 +697,7 @@ static void Cmd_Run(CmdLine_t * line, const CmdNode_t * node, const char * str)
 static const char * Cmd_TabCompleteMenu(CmdLine_t * line, const CmdNode_t * node, const char * str)
 {
 	CmdToken_t token;
-	if (Cmd_NextToken(line, &str, &token))
+	if (Cmd_NextToken(line, &str, &token) == CmdToken_Ok)
 	{
 		bool end = *str == 0;
 

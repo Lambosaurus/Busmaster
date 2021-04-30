@@ -22,6 +22,9 @@ typedef enum {
 	CmdArg_Number,
 	CmdArg_Bytes,
 	CmdArg_String,
+
+	CmdArg_Mask = 0x7F,
+	CmdArg_Optional = 0x80,
 } CmdArgType_t;
 
 typedef enum {
@@ -40,6 +43,12 @@ typedef struct {
 	uint8_t type;
 } CmdArg_t;
 
+typedef enum {
+	CmdAnsi_None,
+	CmdAnsi_Escaped,
+	CmdAnsi_CSI,
+} CmdAnsiState_t;
+
 typedef struct {
 	union {
 		struct {
@@ -50,6 +59,7 @@ typedef struct {
 		const char * str;
 		bool boolean;
 	};
+	bool present;
 } CmdArgValue_t;
 
 typedef struct CmdNode_s {
@@ -73,6 +83,7 @@ typedef struct CmdLine_s {
 		uint32_t index;
 		uint32_t size;
 		char * data;
+		uint32_t recall_index;
 	}bfr;
 	void (*print)(const uint8_t * data, uint32_t size);
 	const CmdNode_t * root;
@@ -87,6 +98,7 @@ typedef struct CmdLine_s {
 		bool echo;
 	}cfg;
 	char last_ch;
+	CmdAnsiState_t ansi;
 } CmdLine_t;
 
 /*
