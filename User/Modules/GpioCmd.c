@@ -14,6 +14,13 @@
  * PRIVATE TYPES
  */
 
+typedef enum {
+	PinState_None 	= 0,
+	PinState_Output = (1 << 0),
+	PinState_Input 	= (1 << 1),
+	PinState_Pullup = (1 << 2),
+} PinState_t;
+
 /*
  * PRIVATE PROTOTYPES
  */

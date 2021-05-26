@@ -26,7 +26,7 @@ static void I2CCMD_SetPullups(uint32_t r);
  */
 
 static bool gI2cEnabled;
-const static CmdNode_t gI2cMenu;
+static const CmdNode_t gI2cMenu;
 
 /*
  * PUBLIC FUNCTIONS
